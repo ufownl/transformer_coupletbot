@@ -81,7 +81,7 @@ def train(max_epochs, learning_rate, batch_size, sequence_length, context):
         validating_avg_L = validating_total_L / validating_batches
 
         print("[Epoch %d]  training_loss %.10f  validating_loss %.10f  %s %f  duration %.2fs" % (
-            epoch, training_avg_L, validating_avg_L, ppl.get()[0], ppl.get()[1], time.time() - ts
+            epoch + 1, training_avg_L, validating_avg_L, ppl.get()[0], ppl.get()[1], time.time() - ts
         ), flush=True)
 
         model.save_parameters("model/couplet_seq2seq.params")
