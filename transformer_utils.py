@@ -66,7 +66,7 @@ class MultiHeadAttention(mx.gluon.nn.Block):
         v = v.transpose((0, 2, 1, 3))
         v = v.reshape((batch_size * self._heads, -1, self._dims_per_head))
         if not mask is None:
-            mask = mask.tile((self._heads, 1, 1))
+            mask = mask.repeat(self._heads, axis=0)
         scale = (k.shape[-1] // self._heads) ** -0.5
         out, attn = self._attention(q, k, v, scale, mask)
         out = out.reshape((batch_size, self._heads, -1, self._dims_per_head))
