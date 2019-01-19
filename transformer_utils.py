@@ -84,12 +84,12 @@ class PositionalEncoding(mx.gluon.nn.Block):
         self._max_len = max_len + 1
         self._weight = None
 
-    def forward(self, seq_len, bkt_len):
+    def forward(self, x, seq_len):
         if self._weight is None:
-            self._weight = mx.nd.array([[pos / (10000 ** (2 * (i // 2) / self._dims)) for i in range(self._dims)] for pos in range(self._max_len)], ctx=seq_len.context)
+            self._weight = mx.nd.array([[pos / (10000 ** (2 * (i // 2) / self._dims)) for i in range(self._dims)] for pos in range(self._max_len)], ctx=x.context)
             self._weight[:, 0::2] = mx.nd.sin(self._weight[:, 0::2])
             self._weight[:, 1::2] = mx.nd.cos(self._weight[:, 1::2])
-        seq_pos = mx.nd.array([list(range(1, int(l.asscalar()) + 1)) + [0] * (bkt_len - int(l.asscalar())) for l in seq_len], ctx=seq_len.context)
+        seq_pos = mx.nd.array([list(range(1, int(l.asscalar()) + 1)) + [0] * (x.shape[1] - int(l.asscalar())) for l in seq_len], ctx=x.context)
         return mx.nd.Embedding(seq_pos, self._weight, self._max_len, self._dims)
 
 
@@ -112,11 +112,11 @@ class EncoderLayer(mx.gluon.nn.Block):
     def __init__(self, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(EncoderLayer, self).__init__(**kwargs)
         with self.name_scope():
-            self._attention = MultiHeadAttention(dims, heads, dropout)
+            self._self_attn = MultiHeadAttention(dims, heads, dropout)
             self._ffn = PositionalWiseFeedForward(dims, ffn_dims, dropout)
 
     def forward(self, x, mask):
-        y, attn = self._attention(x, x, x, mask)
+        y, attn = self._self_attn(x, x, x, mask)
         y = self._ffn(y)
         return y, attn
 
@@ -132,7 +132,7 @@ class Encoder(mx.gluon.nn.Block):
                 self._layers.add(EncoderLayer(dims, heads, ffn_dims, dropout))
 
     def forward(self, x, seq_len):
-        y = self._embedding(x) + self._pos_encoding(seq_len, x.shape[1])
+        y = self._embedding(x) + self._pos_encoding(x, seq_len)
         mask = padding_mask(x, x)
         attns = []
         for layer in self._layers:
@@ -145,12 +145,13 @@ class DecoderLayer(mx.gluon.nn.Block):
     def __init__(self, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(DecoderLayer, self).__init__(**kwargs)
         with self.name_scope():
-            self._attention = MultiHeadAttention(dims, heads, dropout)
+            self._self_attn = MultiHeadAttention(dims, heads, dropout)
+            self._context_attn = MultiHeadAttention(dims, heads, dropout)
             self._ffn = PositionalWiseFeedForward(dims, ffn_dims, dropout)
 
     def forward(self, x, enc_y, self_attn_mask, context_attn_mask):
-        y, self_attn = self._attention(x, x, x, self_attn_mask)
-        y, context_attn = self._attention(y, enc_y, enc_y, context_attn_mask)
+        y, self_attn = self._self_attn(x, x, x, self_attn_mask)
+        y, context_attn = self._context_attn(y, enc_y, enc_y, context_attn_mask)
         return self._ffn(y), self_attn, context_attn
 
 
@@ -165,7 +166,7 @@ class Decoder(mx.gluon.nn.Block):
                 self._layers.add(DecoderLayer(dims, heads, ffn_dims, dropout))
 
     def forward(self, x, seq_len, enc_y, context_attn_mask):
-        y = self._embedding(x) + self._pos_encoding(seq_len, x.shape[1])
+        y = self._embedding(x) + self._pos_encoding(x, seq_len)
         self_attn_mask = mx.nd.logical_or(padding_mask(x, x), sequence_mask(x))
         self_attns = []
         context_attns = []
