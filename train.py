@@ -92,7 +92,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Start a transformer_coupletbot trainer.")
     parser.add_argument("--max_epochs", help="set the max epochs (default: 100)", type=int, default=100)
     parser.add_argument("--learning_rate", help="set the learning rate (default: 0.001)", type=float, default=0.001)
-    parser.add_argument("--batch_size", help="set the batch size (default: 256)", type=int, default=256)
+    parser.add_argument("--batch_size", help="set the batch size (default: 128)", type=int, default=128)
     parser.add_argument("--device_id", help="select device that the model using (default: 0)", type=int, default=0)
     parser.add_argument("--gpu", help="using gpu acceleration", action="store_true")
     args = parser.parse_args()

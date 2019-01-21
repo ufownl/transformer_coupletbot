@@ -129,7 +129,8 @@ class Encoder(mx.gluon.nn.Block):
             self._pos_encoding = PositionalEncoding(dims, max_len)
             self._layers = mx.gluon.nn.Sequential()
             with self._layers.name_scope():
-                self._layers.add(EncoderLayer(dims, heads, ffn_dims, dropout))
+                for _ in range(layers):
+                    self._layers.add(EncoderLayer(dims, heads, ffn_dims, dropout))
 
     def forward(self, x, seq_len):
         y = self._embedding(x) + self._pos_encoding(x, seq_len)
@@ -163,7 +164,8 @@ class Decoder(mx.gluon.nn.Block):
             self._pos_encoding = PositionalEncoding(dims, max_len)
             self._layers = mx.gluon.nn.Sequential()
             with self._layers.name_scope():
-                self._layers.add(DecoderLayer(dims, heads, ffn_dims, dropout))
+                for _ in range(layers):
+                    self._layers.add(DecoderLayer(dims, heads, ffn_dims, dropout))
 
     def forward(self, x, seq_len, enc_y, context_attn_mask):
         y = self._embedding(x) + self._pos_encoding(x, seq_len)
