@@ -93,6 +93,22 @@ class PositionalEncoding(mx.gluon.nn.Block):
         return mx.nd.Embedding(seq_pos, self._weight, self._max_len, self._dims)
 
 
+class TimingEncoding(mx.gluon.nn.Block):
+    def __init__(self, dims, max_len, **kwargs):
+        super(TimingEncoding, self).__init__(**kwargs)
+        self._dims = dims
+        self._max_len = max_len
+        self._weight = None
+
+    def forward(self, x, t):
+        if self._weight is None:
+            self._weight = mx.nd.array([[pos / (10000 ** (2 * (i // 2) / self._dims)) for i in range(self._dims)] for pos in range(self._max_len)], ctx=x.context)
+            self._weight[:, 0::2] = mx.nd.sin(self._weight[:, 0::2])
+            self._weight[:, 1::2] = mx.nd.cos(self._weight[:, 1::2])
+        seq_t = mx.nd.ones(x.shape[:2], ctx=x.context) * t
+        return mx.nd.Embedding(seq_t, self._weight, self._max_len, self._dims)
+
+
 class PositionalWiseFeedForward(mx.gluon.nn.Block):
     def __init__(self, dims, ffn_dims, dropout=0.0, **kwargs):
         super(PositionalWiseFeedForward, self).__init__(**kwargs)
@@ -124,20 +140,19 @@ class EncoderLayer(mx.gluon.nn.Block):
 class Encoder(mx.gluon.nn.Block):
     def __init__(self, vocab_size, max_len, layers, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(Encoder, self).__init__(**kwargs)
+        self._max_layers = layers
         with self.name_scope():
             self._embedding = mx.gluon.nn.Embedding(vocab_size, dims, weight_initializer=mx.init.Uniform(0.1))
             self._pos_encoding = PositionalEncoding(dims, max_len)
-            self._layers = mx.gluon.nn.Sequential()
-            with self._layers.name_scope():
-                for _ in range(layers):
-                    self._layers.add(EncoderLayer(dims, heads, ffn_dims, dropout))
+            self._time_encoding = TimingEncoding(dims, layers)
+            self._encoder = EncoderLayer(dims, heads, ffn_dims, dropout)
 
     def forward(self, x, seq_len):
-        y = self._embedding(x) + self._pos_encoding(x, seq_len)
+        y = self._embedding(x)
         mask = padding_mask(x, x)
         attns = []
-        for layer in self._layers:
-            y, attn = layer(y, mask)
+        for t in range(self._max_layers):
+            y, attn = self._encoder(y + self._pos_encoding(y, seq_len) + self._time_encoding(y, t), mask)
             attns.append(attn)
         return y, attns
 
@@ -159,21 +174,20 @@ class DecoderLayer(mx.gluon.nn.Block):
 class Decoder(mx.gluon.nn.Block):
     def __init__(self, vocab_size, max_len, layers, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(Decoder, self).__init__(**kwargs)
+        self._max_layers = layers
         with self.name_scope():
             self._embedding = mx.gluon.nn.Embedding(vocab_size, dims, weight_initializer=mx.init.Uniform(0.1))
             self._pos_encoding = PositionalEncoding(dims, max_len)
-            self._layers = mx.gluon.nn.Sequential()
-            with self._layers.name_scope():
-                for _ in range(layers):
-                    self._layers.add(DecoderLayer(dims, heads, ffn_dims, dropout))
+            self._time_encoding = TimingEncoding(dims, layers)
+            self._decoder = DecoderLayer(dims, heads, ffn_dims, dropout)
 
     def forward(self, x, seq_len, enc_y, context_attn_mask):
-        y = self._embedding(x) + self._pos_encoding(x, seq_len)
+        y = self._embedding(x)
         self_attn_mask = mx.nd.logical_or(padding_mask(x, x), sequence_mask(x))
         self_attns = []
         context_attns = []
-        for layer in self._layers:
-            y, self_attn, context_attn = layer(y, enc_y, self_attn_mask, context_attn_mask)
+        for t in range(self._max_layers):
+            y, self_attn, context_attn = self._decoder(y + self._pos_encoding(y, seq_len) + self._time_encoding(y, t), enc_y, self_attn_mask, context_attn_mask)
             self_attns.append(self_attn)
             context_attns.append(context_attn)
         return y, self_attns, context_attns
