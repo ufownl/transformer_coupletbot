@@ -140,21 +140,17 @@ class EncoderLayer(mx.gluon.nn.Block):
 class Encoder(mx.gluon.nn.Block):
     def __init__(self, vocab_size, max_len, layers, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(Encoder, self).__init__(**kwargs)
-        self._max_layers = layers
         with self.name_scope():
             self._embedding = mx.gluon.nn.Embedding(vocab_size, dims, weight_initializer=mx.init.Uniform(0.1))
             self._pos_encoding = PositionalEncoding(dims, max_len)
             self._time_encoding = TimingEncoding(dims, layers)
             self._encoder = EncoderLayer(dims, heads, ffn_dims, dropout)
+            self._act = AdaptiveComputationTime(layers)
 
     def forward(self, x, seq_len):
         y = self._embedding(x)
         mask = padding_mask(x, x)
-        attns = []
-        for t in range(self._max_layers):
-            y, attn = self._encoder(y + self._pos_encoding(y, seq_len) + self._time_encoding(y, t), mask)
-            attns.append(attn)
-        return y, attns
+        return self._act(self._encoder, self._pos_encoding, self._time_encoding, y, seq_len, mask)
 
 
 class DecoderLayer(mx.gluon.nn.Block):
@@ -174,23 +170,61 @@ class DecoderLayer(mx.gluon.nn.Block):
 class Decoder(mx.gluon.nn.Block):
     def __init__(self, vocab_size, max_len, layers, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(Decoder, self).__init__(**kwargs)
-        self._max_layers = layers
         with self.name_scope():
             self._embedding = mx.gluon.nn.Embedding(vocab_size, dims, weight_initializer=mx.init.Uniform(0.1))
             self._pos_encoding = PositionalEncoding(dims, max_len)
             self._time_encoding = TimingEncoding(dims, layers)
             self._decoder = DecoderLayer(dims, heads, ffn_dims, dropout)
+            self._act = AdaptiveComputationTime(layers)
 
     def forward(self, x, seq_len, enc_y, context_attn_mask):
         y = self._embedding(x)
         self_attn_mask = mx.nd.logical_or(padding_mask(x, x), sequence_mask(x))
+        return self._act(self._decoder, self._pos_encoding, self._time_encoding, y, seq_len, self_attn_mask, enc_y, context_attn_mask)
+
+
+class AdaptiveComputationTime(mx.gluon.nn.Block):
+    def __init__(self, layers, threshold=0.9, **kwargs):
+        super(AdaptiveComputationTime, self).__init__(**kwargs)
+        self._layers = layers
+        self._threshold = threshold
+        with self.name_scope():
+            self._p = mx.gluon.nn.Dense(1, activation="sigmoid", bias_initializer="ones", flatten=False)
+
+    def forward(self, fn, pos_encoding, time_encoding, x, seq_len, self_attn_mask, enc_y=None, context_attn_mask=None):
+        halting_prob = mx.nd.zeros(x.shape[:2], ctx=x.context)
+        remainders = mx.nd.zeros(x.shape[:2], ctx=x.context)
+        updates = mx.nd.zeros(x.shape[:2], ctx=x.context)
+        prev_state = mx.nd.zeros_like(x, ctx=x.context)
+        y = x
         self_attns = []
-        context_attns = []
-        for t in range(self._max_layers):
-            y, self_attn, context_attn = self._decoder(y + self._pos_encoding(y, seq_len) + self._time_encoding(y, t), enc_y, self_attn_mask, context_attn_mask)
-            self_attns.append(self_attn)
-            context_attns.append(context_attn)
-        return y, self_attns, context_attns
+        if not enc_y is None:
+            context_attns = []
+        t = 0
+        while mx.nd.logical_and(halting_prob < self._threshold, updates < self._layers).sum() > 0:
+            state = y + pos_encoding(y, seq_len) + time_encoding(y, t)
+            p = self._p(state).flatten()
+            running = halting_prob < 1.0
+            halting = mx.nd.logical_and(halting_prob + p * running > self._threshold, running)
+            running = mx.nd.logical_and(halting_prob + p * running <= self._threshold, running)
+            halting_prob = halting_prob + p * running
+            remainders = remainders + (1 - halting_prob) * halting
+            halting_prob = halting_prob + remainders * halting
+            updates = updates + running + halting
+            weights = (p * running + remainders * halting).expand_dims(2)
+            if enc_y is None:
+                y, self_attn = fn(state, self_attn_mask)
+                self_attns.append(self_attn)
+            else:
+                y, self_attn, context_attn = fn(state, enc_y, self_attn_mask, context_attn_mask)
+                self_attns.append(self_attn)
+                context_attns.append(context_attn)
+            prev_state = y * weights + prev_state * (1 - weights)
+            t += 1
+        if enc_y is None:
+            return prev_state, self_attns
+        else:
+            return prev_state, self_attns, context_attns
 
 
 if __name__ == "__main__":
