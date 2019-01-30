@@ -2,7 +2,6 @@ import math
 import argparse
 import mxnet as mx
 from vocab import Vocabulary
-from dataset import pad_sentence
 from couplet_seq2seq import CoupletSeq2seq
 from transformer_utils import padding_mask
 
@@ -36,7 +35,6 @@ while True:
         break
     source = [vocab.char2idx(ch) for ch in source]
     src_len = len(source)
-    source = pad_sentence(source, vocab, [2 ** (i + 1) for i in range(int(math.log(sequence_length, 2)))])
     print(source)
     source = mx.nd.array(source, ctx=context).reshape((1, -1))
     src_len = mx.nd.array([src_len], ctx=context)
