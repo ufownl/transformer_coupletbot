@@ -9,7 +9,7 @@ from dataset import load_conversations, dataset_filter, make_vocab, tokenize, bu
 from couplet_seq2seq import CoupletSeq2seq
 
 
-def train(max_epochs, learning_rate, batch_size, sequence_length, context):
+def train(max_epochs, learning_rate, batch_size, sequence_length, sgd, context):
     print("Loading dataset...", flush=True)
     dataset = dataset_filter(load_conversations("data/couplets.conv"), sequence_length)
     if os.path.isfile("model/vocabulary.json"):
@@ -34,10 +34,19 @@ def train(max_epochs, learning_rate, batch_size, sequence_length, context):
         model.initialize(mx.init.Xavier(), ctx=context)
 
     print("Learning rate:", learning_rate)
-    trainer = mx.gluon.Trainer(model.collect_params(), "Adam", {
-        "learning_rate": learning_rate,
-        "clip_gradient": 5.0
-    })
+    if sgd:
+        print("Optimizer: SGD")
+        trainer = mx.gluon.Trainer(model.collect_params(), "SGD", {
+            "learning_rate": learning_rate,
+            "momentum": 0.5,
+            "clip_gradient": 5.0
+        })
+    else:
+        print("Optimizer: Adam")
+        trainer = mx.gluon.Trainer(model.collect_params(), "Adam", {
+            "learning_rate": learning_rate,
+            "clip_gradient": 5.0
+        })
     if os.path.isfile("model/couplet_seq2seq.state"):
         trainer.load_states("model/couplet_seq2seq.state")
 
@@ -94,6 +103,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", help="set the max epochs (default: 100)", type=int, default=100)
     parser.add_argument("--learning_rate", help="set the learning rate (default: 1e-5)", type=float, default=1e-5)
     parser.add_argument("--batch_size", help="set the batch size (default: 128)", type=int, default=128)
+    parser.add_argument("--sgd", help="using sgd optimizer", action="store_true")
     parser.add_argument("--device_id", help="select device that the model using (default: 0)", type=int, default=0)
     parser.add_argument("--gpu", help="using gpu acceleration", action="store_true")
     args = parser.parse_args()
@@ -103,4 +113,4 @@ if __name__ == "__main__":
     else:
         context = mx.cpu(args.device_id)
 
-    train(args.max_epochs, args.learning_rate, args.batch_size, 32, context)
+    train(args.max_epochs, args.learning_rate, args.batch_size, 32, args.sgd, context)
