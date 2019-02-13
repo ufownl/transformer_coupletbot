@@ -7,7 +7,7 @@ class CoupletSeq2seq(mx.gluon.nn.Block):
         super(CoupletSeq2seq, self).__init__(**kwargs)
         with self.name_scope():
             self._encoder = Encoder(vocab_size, max_len, layers, dims, heads, ffn_dims, dropout)
-            self._decoder = Decoder(vocab_size, max_len, layers, dims, heads, ffn_dims, dropout)
+            self._decoder = Decoder(vocab_size, max_len + 1, layers, dims, heads, ffn_dims, dropout)
             self._output = mx.gluon.nn.Dense(vocab_size, flatten=False)
 
     def forward(self, src_seq, src_len, tgt_seq, tgt_len):
