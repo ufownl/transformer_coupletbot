@@ -10,6 +10,8 @@ from couplet_seq2seq import CoupletSeq2seq
 
 
 def train(max_epochs, learning_rate, batch_size, sequence_length, sgd, context):
+    mx.random.seed(int(time.time()))
+
     print("Loading dataset...", flush=True)
     dataset = dataset_filter(load_conversations("data/couplets.conv"), sequence_length)
     if os.path.isfile("model/vocabulary.json"):
