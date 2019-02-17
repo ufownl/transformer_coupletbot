@@ -64,7 +64,7 @@ def train(max_epochs, learning_rate, batch_size, sequence_length, sgd, context):
                 training_batches += 1
                 with mx.autograd.record():
                     output, enc_self_attn, dec_self_attn, context_attn = model(source, src_len, target, tgt_len)
-                    L = loss(output, label, mx.nd.not_equal(label, 0).expand_dims(-1))
+                    L = loss(output, label, mx.nd.not_equal(label, vocab.char2idx("<PAD>")).expand_dims(-1))
                     L.backward()
                 trainer.step(source.shape[0])
                 training_batch_L = mx.nd.mean(L).asscalar()
@@ -83,7 +83,7 @@ def train(max_epochs, learning_rate, batch_size, sequence_length, sgd, context):
             for source, src_len, target, tgt_len, label in batches(bucket, vocab, batch_size, seq_len, context):
                 validating_batches += 1
                 output, enc_self_attn, dec_self_attn, context_attn = model(source, src_len, target, tgt_len)
-                L = loss(output, label, mx.nd.not_equal(label, 0).expand_dims(-1))
+                L = loss(output, label, mx.nd.not_equal(label, vocab.char2idx("<PAD>")).expand_dims(-1))
                 validating_batch_L = mx.nd.mean(L).asscalar()
                 if validating_batch_L != validating_batch_L:
                     raise ValueError()
