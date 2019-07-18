@@ -40,14 +40,12 @@ def train(max_epochs, learning_rate, batch_size, min_ppl, sequence_length, sgd, 
         print("Optimizer: SGD")
         trainer = mx.gluon.Trainer(model.collect_params(), "SGD", {
             "learning_rate": learning_rate,
-            "momentum": 0.5,
-            "clip_gradient": 5.0
+            "momentum": 0.5
         })
     else:
         print("Optimizer: Adam")
         trainer = mx.gluon.Trainer(model.collect_params(), "Adam", {
-            "learning_rate": learning_rate,
-            "clip_gradient": 5.0
+            "learning_rate": learning_rate
         })
     if os.path.isfile("model/couplet_seq2seq.state"):
         trainer.load_states("model/couplet_seq2seq.state")
