@@ -9,7 +9,7 @@ from dataset import load_conversations, dataset_filter, make_vocab, tokenize, bu
 from couplet_seq2seq import CoupletSeq2seq
 
 
-def train(max_epochs, learning_rate, batch_size, sequence_length, sgd, context):
+def train(max_epochs, learning_rate, batch_size, min_ppl, sequence_length, sgd, context):
     mx.random.seed(int(time.time()))
 
     print("Loading dataset...", flush=True)
@@ -96,8 +96,10 @@ def train(max_epochs, learning_rate, batch_size, sequence_length, sgd, context):
             epoch + 1, training_avg_L, validating_avg_L, ppl.get()[0], ppl.get()[1], time.time() - ts
         ), flush=True)
 
-        model.save_parameters("model/couplet_seq2seq.params")
-        trainer.save_states("model/couplet_seq2seq.state")
+        if ppl.get()[1] < min_ppl:
+            min_ppl = ppl.get()[1]
+            model.save_parameters("model/couplet_seq2seq.params")
+            trainer.save_states("model/couplet_seq2seq.state")
 
 
 if __name__ == "__main__":
@@ -105,6 +107,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", help="set the max epochs (default: 100)", type=int, default=100)
     parser.add_argument("--learning_rate", help="set the learning rate (default: 1e-4)", type=float, default=1e-4)
     parser.add_argument("--batch_size", help="set the batch size (default: 128)", type=int, default=128)
+    parser.add_argument("--min_ppl", help="set the initial minimal perplexity (default: inf)", type=float, default=float("inf"))
     parser.add_argument("--sgd", help="using sgd optimizer", action="store_true")
     parser.add_argument("--device_id", help="select device that the model using (default: 0)", type=int, default=0)
     parser.add_argument("--gpu", help="using gpu acceleration", action="store_true")
@@ -115,4 +118,4 @@ if __name__ == "__main__":
     else:
         context = mx.cpu(args.device_id)
 
-    train(args.max_epochs, args.learning_rate, args.batch_size, 32, args.sgd, context)
+    train(args.max_epochs, args.learning_rate, args.batch_size, args.min_ppl, 32, args.sgd, context)
