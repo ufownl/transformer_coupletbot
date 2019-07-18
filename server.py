@@ -70,16 +70,15 @@ class ChatbotHandler(http.server.BaseHTTPRequestHandler):
 
             print(args.device_id, "say:", content)
             source = [vocab.char2idx(ch) for ch in content]
-            src_len = len(source)
             print(args.device_id, "tokenize:", source)
             source = mx.nd.array(source, ctx=context).reshape((1, -1))
-            src_len = mx.nd.array([src_len], ctx=context)
+            src_len = mx.nd.array([source.shape[1]], ctx=context)
             enc_out, enc_self_attn = model.encode(source, src_len)
             sequences = [([vocab.char2idx("<GO>")], 0.0)]
             while True:
                 candidates = []
                 for seq, score in sequences:
-                    if seq[-1] == vocab.char2idx("<EOS>"):
+                    if seq[-1] == vocab.char2idx("<EOS>") or len(seq) >= source.shape[1] + 2:
                         candidates.append((seq, score))
                     else:
                         target = mx.nd.array(seq, ctx=context).reshape((1, -1))

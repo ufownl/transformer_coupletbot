@@ -34,10 +34,9 @@ while True:
         print("")
         break
     source = [vocab.char2idx(ch) for ch in source]
-    src_len = len(source)
     print(source)
     source = mx.nd.array(source, ctx=context).reshape((1, -1))
-    src_len = mx.nd.array([src_len], ctx=context)
+    src_len = mx.nd.array([source.shape[1]], ctx=context)
     enc_out, enc_self_attn = model.encode(source, src_len)
 
     if args.beam:
@@ -45,7 +44,7 @@ while True:
         while True:
             candidates = []
             for seq, score in sequences:
-                if seq[-1] == vocab.char2idx("<EOS>"):
+                if seq[-1] == vocab.char2idx("<EOS>") or len(seq) >= source.shape[1] + 2:
                     candidates.append((seq, score))
                 else:
                     target = mx.nd.array(seq, ctx=context).reshape((1, -1))
@@ -79,7 +78,7 @@ while True:
             index = mx.nd.argmax(output, axis=2)
             char_token = index[0, -1].asscalar()
             sequence += [char_token]
-            if char_token == vocab.char2idx("<EOS>"):
+            if char_token == vocab.char2idx("<EOS>") or len(sequence) >= source.shape[1] + 2:
                 break;
             target = mx.nd.array(sequence, ctx=context).reshape((1, -1))
             tgt_len = mx.nd.array([len(sequence)], ctx=context)
