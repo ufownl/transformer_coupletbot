@@ -20,6 +20,6 @@ class CoupletSeq2seq(mx.gluon.nn.Block):
         return self._encoder(seq, seq_len)
 
     def decode(self, seq, seq_len, enc_out, context_attn_mask):
-        y, self_attn, context_attn = self._decoder(seq, seq_len, enc_out, context_attn_mask)
-        y = self._output(y)
-        return y, self_attn, context_attn
+        out, self_attn, context_attn = self._decoder(seq, seq_len, enc_out, context_attn_mask)
+        out = self._output(out)
+        return out, self_attn, context_attn

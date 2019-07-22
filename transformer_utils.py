@@ -133,8 +133,7 @@ class EncoderLayer(mx.gluon.nn.Block):
 
     def forward(self, x, mask):
         y, attn = self._self_attn(x, x, x, mask)
-        y = self._ffn(y)
-        return y, attn
+        return self._ffn(y), attn
 
 
 class Encoder(mx.gluon.nn.Block):
