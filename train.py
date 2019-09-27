@@ -43,8 +43,8 @@ def train(max_epochs, learning_rate, batch_size, sequence_length, sgd, context):
             "momentum": 0.5
         })
     else:
-        print("Optimizer: Adam")
-        trainer = mx.gluon.Trainer(model.collect_params(), "Adam", {
+        print("Optimizer: Nadam")
+        trainer = mx.gluon.Trainer(model.collect_params(), "Nadam", {
             "learning_rate": learning_rate
         })
     if os.path.isfile("model/couplet_seq2seq.state"):
