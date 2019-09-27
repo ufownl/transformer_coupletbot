@@ -23,9 +23,9 @@ def train(max_epochs, learning_rate, batch_size, min_ppl, sequence_length, sgd, 
     dataset = tokenize(dataset, vocab)
     split = len(dataset) - len(dataset) // 10
     training_set = dataset[:split]
-    validating_set = dataset[split:]
+    validation_set = dataset[split:]
     print("Training set:", len(training_set))
-    print("Validating set:", len(validating_set))
+    print("Validation set:", len(validation_set))
 
     model = CoupletSeq2seq(vocab.size(), sequence_length)
     loss = mx.gluon.loss.SoftmaxCrossEntropyLoss(axis=2)
@@ -74,24 +74,24 @@ def train(max_epochs, learning_rate, batch_size, min_ppl, sequence_length, sgd, 
                 ), flush=True)
         training_avg_L = training_total_L / training_batches
 
-        validating_total_L = 0.0
-        validating_batches = 0
+        validation_total_L = 0.0
+        validation_batches = 0
         ppl = mx.metric.Perplexity(ignore_label=vocab.char2idx("<PAD>"))
-        for bucket, seq_len in buckets(validating_set, [2 ** (i + 1) for i in range(int(math.log(sequence_length, 2)))]):
+        for bucket, seq_len in buckets(validation_set, [2 ** (i + 1) for i in range(int(math.log(sequence_length, 2)))]):
             for source, src_len, target, tgt_len, label in batches(bucket, vocab, batch_size, seq_len, context):
-                validating_batches += 1
+                validation_batches += 1
                 output, enc_self_attn, dec_self_attn, context_attn = model(source, src_len, target, tgt_len)
                 L = loss(output, label, mx.nd.not_equal(label, vocab.char2idx("<PAD>")).expand_dims(-1))
-                validating_batch_L = mx.nd.mean(L).asscalar()
-                if validating_batch_L != validating_batch_L:
+                validation_batch_L = mx.nd.mean(L).asscalar()
+                if validation_batch_L != validation_batch_L:
                     raise ValueError()
-                validating_total_L += validating_batch_L
+                validation_total_L += validation_batch_L
                 probs = mx.nd.softmax(output, axis=2)
                 ppl.update([label.reshape((-1,))], [probs.reshape((-1, vocab.size()))])
-        validating_avg_L = validating_total_L / validating_batches
+        validation_avg_L = validation_total_L / validation_batches
 
-        print("[Epoch %d]  training_loss %.10f  validating_loss %.10f  %s %f  duration %.2fs" % (
-            epoch + 1, training_avg_L, validating_avg_L, ppl.get()[0], ppl.get()[1], time.time() - ts
+        print("[Epoch %d]  training_loss %.10f  validation_loss %.10f  %s %f  duration %.2fs" % (
+            epoch + 1, training_avg_L, validation_avg_L, ppl.get()[0], ppl.get()[1], time.time() - ts
         ), flush=True)
 
         if ppl.get()[1] < min_ppl:
