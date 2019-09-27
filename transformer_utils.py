@@ -48,10 +48,8 @@ class MultiHeadAttention(mx.gluon.nn.Block):
             self._attention = ScaledDotProductAttention(dropout)
             self._dense_final = mx.gluon.nn.Dense(dims, flatten=False)
             self._dropout = mx.gluon.nn.Dropout(dropout)
-            self._layer_norm = mx.gluon.nn.LayerNorm()
 
-    def forward(self, q, k, v, mask):
-        residual = q
+    def forward(self, q, k, v, residual, mask):
         batch_size = q.shape[0]
         q = self._dense_q(q)
         k = self._dense_k(k)
@@ -68,13 +66,13 @@ class MultiHeadAttention(mx.gluon.nn.Block):
         scale = self._dims_per_head ** -0.5
         if not mask is None:
             mask = mask.repeat(self._heads, axis=0)
-        out, attn = self._attention(q, k, v, scale, mask)
-        out = out.reshape((batch_size, self._heads, -1, self._dims_per_head))
-        out = out.transpose((0, 2, 1, 3))
-        out = out.reshape((batch_size, -1, self._dims_per_head * self._heads))
-        out = self._dense_final(out)
-        out = self._dropout(out)
-        return self._layer_norm(residual + out), attn
+        y, attn = self._attention(q, k, v, scale, mask)
+        y = y.reshape((batch_size, self._heads, -1, self._dims_per_head))
+        y = y.transpose((0, 2, 1, 3))
+        y = y.reshape((batch_size, -1, self._dims_per_head * self._heads))
+        y = self._dense_final(y)
+        y = self._dropout(y)
+        return y + residual, attn
 
 
 class PositionalEncoding(mx.gluon.nn.Block):
@@ -116,24 +114,25 @@ class PositionalWiseFeedForward(mx.gluon.nn.Block):
             self._w1 = mx.gluon.nn.Conv1D(ffn_dims, 1)
             self._w2 = mx.gluon.nn.Conv1D(dims, 1)
             self._dropout = mx.gluon.nn.Dropout(dropout)
-            self._layer_norm = mx.gluon.nn.LayerNorm()
 
-    def forward(self, x):
+    def forward(self, x, residual):
         y = self._w2(mx.nd.relu(self._w1(x.transpose((0, 2, 1)))))
         y = self._dropout(y.transpose((0, 2, 1)))
-        return self._layer_norm(x + y)
+        return y + residual
 
 
 class EncoderLayer(mx.gluon.nn.Block):
     def __init__(self, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(EncoderLayer, self).__init__(**kwargs)
         with self.name_scope():
+            self._layer_norm = mx.gluon.nn.LayerNorm()
             self._self_attn = MultiHeadAttention(dims, heads, dropout)
             self._ffn = PositionalWiseFeedForward(dims, ffn_dims, dropout)
 
     def forward(self, x, mask):
-        y, attn = self._self_attn(x, x, x, mask)
-        return self._ffn(y), attn
+        norm_x = self._layer_norm(x)
+        y, attn = self._self_attn(norm_x, norm_x, norm_x, x, mask)
+        return self._ffn(self._layer_norm(y), y), attn
 
 
 class Encoder(mx.gluon.nn.Block):
@@ -156,14 +155,16 @@ class DecoderLayer(mx.gluon.nn.Block):
     def __init__(self, dims, heads, ffn_dims, dropout=0.0, **kwargs):
         super(DecoderLayer, self).__init__(**kwargs)
         with self.name_scope():
+            self._layer_norm = mx.gluon.nn.LayerNorm()
             self._self_attn = MultiHeadAttention(dims, heads, dropout)
             self._context_attn = MultiHeadAttention(dims, heads, dropout)
             self._ffn = PositionalWiseFeedForward(dims, ffn_dims, dropout)
 
     def forward(self, x, enc_y, self_attn_mask, context_attn_mask):
-        y, self_attn = self._self_attn(x, x, x, self_attn_mask)
-        y, context_attn = self._context_attn(y, enc_y, enc_y, context_attn_mask)
-        return self._ffn(y), self_attn, context_attn
+        norm_x = self._layer_norm(x)
+        y, self_attn = self._self_attn(norm_x, norm_x, norm_x, x, self_attn_mask)
+        y, context_attn = self._context_attn(self._layer_norm(y), enc_y, enc_y, y, context_attn_mask)
+        return self._ffn(self._layer_norm(y), y), self_attn, context_attn
 
 
 class Decoder(mx.gluon.nn.Block):
@@ -189,6 +190,7 @@ class AdaptiveComputationTime(mx.gluon.nn.Block):
         self._threshold = threshold
         with self.name_scope():
             self._p = mx.gluon.nn.Dense(1, activation="sigmoid", bias_initializer="ones", flatten=False)
+            self._layer_norm = mx.gluon.nn.LayerNorm()
 
     def forward(self, fn, pos_encoding, time_encoding, x, seq_len, self_attn_mask, enc_y=None, context_attn_mask=None):
         halting_prob = mx.nd.zeros(x.shape[:2], ctx=x.context)
@@ -221,9 +223,9 @@ class AdaptiveComputationTime(mx.gluon.nn.Block):
             prev_state = y * weights + prev_state * (1 - weights)
             t += 1
         if enc_y is None:
-            return prev_state, self_attns
+            return self._layer_norm(prev_state), self_attns
         else:
-            return prev_state, self_attns, context_attns
+            return self._layer_norm(prev_state), self_attns, context_attns
 
 
 if __name__ == "__main__":
