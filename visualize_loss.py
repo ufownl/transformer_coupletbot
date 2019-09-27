@@ -4,21 +4,32 @@ import matplotlib.pyplot as plt
 
 
 def visualize(lines):
-    regex = re.compile(".* training_loss (\S+).* validation_loss (\S+).* perplexity (\S+)")
-    training_loss = []
-    validation_loss = []
-    min_ppl = float("inf")
+    regex = re.compile("^\[Epoch ([0-9]+).*  Batch ([0-9]+)\]  batch_loss (\S+).*")
+    batch_x = []
+    batch_loss = []
     for line in lines:
         m = regex.match(line)
         if m:
-            training_loss.append(float(m.group(1)))
-            validation_loss.append(float(m.group(2)))
-            ppl = float(m.group(3))
-            if ppl < min_ppl:
-                min_ppl = ppl
-    print("Minimal perplexity: ", min_ppl)
-    plt.plot(np.array(training_loss), label="training loss")
-    plt.plot(np.array(validation_loss), label="validation loss")
+            batch_x.append((int(m.group(1)), int(m.group(2))))
+            batch_loss.append(float(m.group(3)))
+    batches = max(batch_x, key=lambda x: x[1])[1]
+    batch_x = [epoch + batch / batches for epoch, batch in batch_x]
+    regex = re.compile("^\[Epoch ([0-9]+)\]  training_loss (\S+)  validation_loss (\S+).*")
+    epoch_x = []
+    training_loss = []
+    validation_loss = []
+    for line in lines:
+        m = regex.match(line)
+        if m:
+            epoch_x.append(int(m.group(1)))
+            training_loss.append(float(m.group(2)))
+            validation_loss.append(float(m.group(3)))
+    plt.subplot(2, 1, 1)
+    plt.plot(np.array(batch_x), np.array(batch_loss), label="batch loss")
+    plt.grid(True)
+    plt.subplot(2, 1, 2)
+    plt.plot(np.array(epoch_x), np.array(training_loss), label="training loss")
+    plt.plot(np.array(epoch_x), np.array(validation_loss), label="validation loss")
     plt.grid(True)
     plt.legend()
     plt.show()
