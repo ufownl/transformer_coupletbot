@@ -3,7 +3,7 @@ from transformer_utils import padding_mask, Encoder, Decoder
 
 
 class CoupletSeq2seq(mx.gluon.nn.Block):
-    def __init__(self, vocab_size, max_len, layers=6, dims=512, heads=8, ffn_dims=2048, dropout=0.2, **kwargs):
+    def __init__(self, vocab_size, max_len, layers=6, dims=512, heads=8, ffn_dims=2048, dropout=0.5, **kwargs):
         super(CoupletSeq2seq, self).__init__(**kwargs)
         with self.name_scope():
             self._encoder = Encoder(vocab_size, max_len, layers, dims, heads, ffn_dims, dropout)
